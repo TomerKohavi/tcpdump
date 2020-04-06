@@ -268,6 +268,8 @@ static void flushpcap(int);
 #ifdef _WIN32
     static HANDLE timer_handle = INVALID_HANDLE_VALUE;
     static void CALLBACK verbose_stats_dump(PVOID param, BOOLEAN timer_fired);
+    static HANDLE timeout_handle = INVALID_HANDLE_VALUE;
+    static void CALLBACK cleanup(PVOID param, BOOLEAN timer_fired);
 #else /* _WIN32 */
   static void verbose_stats_dump(int sig);
 #endif /* _WIN32 */
@@ -662,7 +664,7 @@ show_remote_devices_and_exit(void)
 #define U_FLAG
 #endif
 
-#define SHORTOPTS "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:o:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNOpq" Q_FLAG "r:s:StT:u" U_FLAG "vV:w:W:xXy:Yz:Z:#"
+#define SHORTOPTS "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNO:o:pq" Q_FLAG "r:s:StT:u" U_FLAG "vV:w:W:xXy:Yz:Z:#"
 
 /*
  * Long options.
@@ -2466,13 +2468,9 @@ DIAG_ON_CLANG(assign-enum)
          * a timer to quit the process.
          */
 #ifdef _WIN32
-        // need to fix
-        /*
-        CreateTimerQueueTimer(&timer_handle, NULL,
-		    cleanup, NULL, 1000, 1000,
-		    WT_EXECUTEDEFAULT|WT_EXECUTELONGFUNCTION);
+        CreateTimerQueueTimer(&timeout_handle, NULL, cleanup, oflag, 0,
+		    WT_EXECUTEDEFAULT|WT_EXECUTELONGFUNCTION, NULL);
 		setvbuf(stderr, NULL, _IONBF, 0);
-         */
 #else /* _WIN32 */
         timer_t timerid;
         struct itimerspec value;
@@ -2675,6 +2673,13 @@ static void
 }
 
 /* make a clean exit on interrupts */
+#ifdef _WIN32
+static void CALLBACK cleanup(PVOID param _U_,
+    BOOLEAN timer_fired _U_)
+{
+	cleanup();
+}
+#endif /* _WIN32 */
 static void
 cleanup(int signo _U_)
 {
@@ -2683,6 +2688,11 @@ cleanup(int signo _U_)
 		DeleteTimerQueueTimer(NULL, timer_handle, NULL);
 		CloseHandle(timer_handle);
 		timer_handle = INVALID_HANDLE_VALUE;
+        }
+    if (timeout_handle != INVALID_HANDLE_VALUE) {
+		DeleteTimerQueueTimer(NULL, timeout_handle, NULL);
+		CloseHandle(timeout_handle);
+		timeout_handle = INVALID_HANDLE_VALUE;
         }
 #else /* _WIN32 */
 	struct itimerval timer;

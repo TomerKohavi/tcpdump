@@ -4067,7 +4067,7 @@ fi
 	;;
 esac
 
-
+LIBS="-lrt  $LIBS"
 
 # Check whether --with-smi was given.
 if test "${with_smi+set}" = set; then :
