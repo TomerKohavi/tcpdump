@@ -196,6 +196,7 @@ static char *remote_interfaces_source;	/* list available devices from this sourc
  */
 extern int dflag;
 int dflag;				/* print filter code */
+static int oflag;			/* Exit the process after this many seconds */
 static int Gflag;			/* rotate dump files after this many seconds */
 static int Gflag_count;			/* number of files created with Gflag rotation */
 static time_t Gflag_time;		/* The last time_t the dump file was rotated. */
@@ -661,7 +662,7 @@ show_remote_devices_and_exit(void)
 #define U_FLAG
 #endif
 
-#define SHORTOPTS "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNOpq" Q_FLAG "r:s:StT:u" U_FLAG "vV:w:W:xXy:Yz:Z:#"
+#define SHORTOPTS "aAb" B_FLAG "c:C:d" D_FLAG "eE:fF:G:hHi:o:" I_FLAG j_FLAG J_FLAG "KlLm:M:nNOpq" Q_FLAG "r:s:StT:u" U_FLAG "vV:w:W:xXy:Yz:Z:#"
 
 /*
  * Long options.
@@ -1612,6 +1613,12 @@ main(int argc, char **argv)
 			infile = optarg;
 			break;
 
+        case 'o':
+            oflag = atoi(optarg);
+            if (oflag <= 0)
+                error("invalid number of seconds %s", optarg);
+            break;
+
 		case 'G':
 			Gflag = atoi(optarg);
 			if (Gflag < 0)
@@ -1637,7 +1644,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'i':
-			device = optarg;
+            device = optarg;
 			break;
 
 #ifdef HAVE_PCAP_CREATE
@@ -2453,6 +2460,39 @@ DIAG_ON_CLANG(assign-enum)
 #endif /* _WIN32 */
 	}
 
+	if (RFileName == NULL && oflag > 0) {
+        /*
+         * When in live capture, and the oflag is set, we set
+         * a timer to quit the process.
+         */
+#ifdef _WIN32
+        // need to fix
+        /*
+        CreateTimerQueueTimer(&timer_handle, NULL,
+		    cleanup, NULL, 1000, 1000,
+		    WT_EXECUTEDEFAULT|WT_EXECUTELONGFUNCTION);
+		setvbuf(stderr, NULL, _IONBF, 0);
+         */
+#else /* _WIN32 */
+        timer_t timerid;
+        struct itimerspec value;
+        struct sigevent sev;
+        (void)setsignal(SIGQUIT, cleanup);
+
+        sev.sigev_notify = SIGEV_SIGNAL;
+        sev.sigev_signo = SIGQUIT;
+        sev.sigev_value.sival_ptr = &timerid;
+
+        value.it_value.tv_sec = oflag;
+        value.it_value.tv_nsec = 0;
+        value.it_interval.tv_sec = value.it_value.tv_sec;
+        value.it_interval.tv_nsec = value.it_value.tv_nsec;
+
+        timer_create (CLOCK_REALTIME, &sev, &timerid);
+        timer_settime (timerid, 0, &value, NULL);
+#endif /* _WIN32 */
+	}
+
 	if (RFileName == NULL) {
 		/*
 		 * Live capture (if -V was specified, we set RFileName
@@ -3163,5 +3203,5 @@ print_usage(void)
 "\t\t[ --time-stamp-precision precision ] [ --micro ] [ --nano ]\n");
 #endif
 	(void)fprintf(stderr,
-"\t\t[ -z postrotate-command ] [ -Z user ] [ expression ]\n");
+"\t\t[ -z postrotate-command ] [ -Z user ] [ -o seconds] [ expression ]\n");
 }
